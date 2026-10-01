@@ -37,13 +37,7 @@
   }
 
   function exportMap() {
-    const blob = new Blob([JSON.stringify($curriculumStore, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `课程地图-${$curriculumStore.revision}.json`
-    link.click()
-    URL.revokeObjectURL(url)
+    curriculumStore.exportMap()
   }
 </script>
 
@@ -52,7 +46,7 @@
 <section class="page">
   <div class="page-head">
     <div><p class="eyebrow">CURRICULUM MAP / 映射图谱</p><h1>有向关系与覆盖矩阵</h1><p class="muted">拖动节点重新布局；连边关系持久保存，覆盖缺口会立即高亮。</p></div>
-    <div class="actions"><button class="btn-secondary" onclick={exportMap}>导出课程地图</button><button class="btn-primary" onclick={() => $curriculumStore.lock(`R${Number($curriculumStore.revision.slice(1)) + 1}`)}>锁定当前版本</button></div>
+    <div class="actions"><button class="btn-secondary" onclick={exportMap}>导出课程地图（批次 {$curriculumStore.batchId ?? '—'}）</button><button class="btn-primary" onclick={() => curriculumStore.lock(`R${Number($curriculumStore.revision.slice(1)) + 1}`)}>锁定当前版本</button></div>
   </div>
 
   <div class="matrix-toolbar panel">

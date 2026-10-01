@@ -27,7 +27,22 @@
           <a href={item.href} class:active={page.url.pathname === item.href} onclick={() => mobileOpen = false}><span>{item.icon}</span>{item.label}</a>
         {/each}
       </nav>
-      <div class="side-note"><strong>{$curriculumStore.locked ? '版本已锁定' : '草稿自动保存'}</strong><span>当前版本 {$curriculumStore.revision}</span></div>
+      <div class="side-note">
+        <strong>{$curriculumStore.locked ? '版本已锁定' : '草稿自动保存'}</strong>
+        <span>当前版本 {$curriculumStore.revision}</span>
+        <span class="batch-line" title="修订批次冻结节点、连边与审阅状态">批次 {$curriculumStore.batchId ?? '未建立'}</span>
+        {#if $curriculumStore.outbox.length > 0}<span class="outbox-dot">待回传 {$curriculumStore.outbox.length} 条</span>{/if}
+        {#if $curriculumStore.conflicts.length > 0}<span class="conflict-dot">待确认 {$curriculumStore.conflicts.length} 项</span>{/if}
+      </div>
+      <div class="side-controls">
+        <div class="seg" role="group" aria-label="当前角色">
+          <button class:active={$curriculumStore.actor === 'owner'} onclick={() => curriculumStore.setActor('owner')}>负责人</button>
+          <button class:active={$curriculumStore.actor === 'reviewer'} onclick={() => curriculumStore.setActor('reviewer')}>审阅人</button>
+        </div>
+        <button class="online-toggle" class:offline={!$curriculumStore.online} onclick={() => curriculumStore.setOnline(!$curriculumStore.online)}>
+          {$curriculumStore.online ? '在线 · 可回网合并' : '断网补录中'}
+        </button>
+      </div>
     </aside>
     <main>
       <header class="mobile-header"><button onclick={() => mobileOpen = !mobileOpen}>菜单</button><strong>{page.data?.title ?? '课程标准映射'}</strong></header>
@@ -51,6 +66,15 @@
   .side-note { margin: auto 12px 14px; padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: rgba(255,255,255,.04); }
   .side-note strong, .side-note span { display: block; font-size: 11px; }
   .side-note span { margin-top: 5px; color: #9eb2b5; }
+  .side-note .batch-line { color: #cfe3e1; }
+  .side-note .outbox-dot { color: #e8c47a; }
+  .side-note .conflict-dot { color: #f0a48f; }
+  .side-controls { display: grid; gap: 8px; margin: 0 12px 14px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.04); }
+  .seg button { padding: 7px 4px; border: 0; border-radius: 6px; color: #9eb2b5; background: transparent; font-size: 12px; cursor: pointer; }
+  .seg button.active { color: white; background: #365e64; }
+  .online-toggle { padding: 8px; border: 1px solid #79b0ac; border-radius: 8px; color: #b5e1dc; background: transparent; font-size: 11px; cursor: pointer; }
+  .online-toggle.offline { border-color: #d99a5b; color: #f0c98f; }
   main { min-width: 0; margin-left: 242px; }
   .mobile-header { display: none; }
   @media (max-width: 800px) {

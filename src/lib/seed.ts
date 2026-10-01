@@ -15,6 +15,8 @@ export type Mapping = {
   weight: number
 }
 
+export type Actor = 'owner' | 'reviewer'
+
 export type ReviewItem = {
   id: string
   courseId: string
@@ -23,6 +25,19 @@ export type ReviewItem = {
   submitter: string
   status: '待审阅' | '已附议' | '已退回'
   comment: string
+  decidedAt?: string
+  decidedBy?: Actor
+  reviewedEvidence?: string
+  conclusionHistory?: ConclusionRecord[]
+}
+
+export type ConclusionRecord = {
+  status: '已附议' | '已退回'
+  comment: string
+  decidedAt: string
+  decidedBy: Actor
+  invalidatedAt: string
+  reason: string
 }
 
 export const nodes: GraphNode[] = [

@@ -1,15 +1,19 @@
 <script lang="ts">
   import { enhance } from '$app/forms'
+  import type { SubmitFunction } from '@sveltejs/kit'
   import type { ActionData } from './$types'
   import { curriculumStore } from '$lib/stores'
+  import type { ReviewItem } from '$lib/seed'
   let { form }: { form: ActionData } = $props()
   let selectedIds = $state<string[]>([])
   let reviewComments = $state<Record<string, string>>({})
+  let editingEvidenceId = $state<string | null>(null)
+  let evidenceDraft = $state('')
   const pending = $derived($curriculumStore.reviewItems.filter((item) => item.status === '待审阅'))
   const courseNames = $derived($curriculumStore.nodes.filter((node) => node.type === '课程'))
   const requirements = $derived($curriculumStore.nodes.filter((node) => node.type === '毕业要求'))
 
-  function review(item: (typeof $curriculumStore.reviewItems)[number], status: '已附议' | '已退回') {
+  function review(item: ReviewItem, status: '已附议' | '已退回') {
     curriculumStore.updateReview(item.id, status, reviewComments[item.id] || (status === '已附议' ? '证据充分，同意纳入修订。' : '请补充可验证的评分记录。'))
   }
 
@@ -19,6 +23,28 @@
       if (item) curriculumStore.updateReview(id, '已附议', '批量附议：证据链完整。')
     })
     selectedIds = []
+  }
+
+  function startEditEvidence(item: ReviewItem) {
+    editingEvidenceId = item.id
+    evidenceDraft = item.evidence
+  }
+
+  function saveEvidence(id: string) {
+    if (evidenceDraft.trim().length >= 12) {
+      curriculumStore.editEvidence(id, evidenceDraft.trim())
+      editingEvidenceId = null
+    }
+  }
+
+  const handleSubmit: SubmitFunction = () => {
+    return async ({ result, formElement }) => {
+      if (result.type === 'success') {
+        const item = (result.data as { item?: ReviewItem } | undefined)?.item
+        if (item) curriculumStore.submitRevision(item)
+        formElement.reset()
+      }
+    }
   }
 </script>
 
@@ -36,6 +62,10 @@
     <div class="notice error">表单未通过校验：{Object.values(form.errors).flat().join('；')}</div>
   {/if}
 
+  {#if $curriculumStore.invalidations.length > 0}
+    <div class="notice invalidated">有 {$curriculumStore.invalidations.length} 项审阅结论因映射或证据变更已失效，需重新审阅；旧结论仍可在条目下追溯。</div>
+  {/if}
+
   <div class="review-layout">
     <section class="panel">
       <div class="panel-head"><h3>审阅队列</h3><span class="muted">{pending.length} 项待处理</span></div>
@@ -48,8 +78,18 @@
                 <strong>{item.id} · {courseNames.find((node) => node.id === item.courseId)?.label.split('\n')[0]}</strong>
                 <span class:approved={item.status === '已附议'} class:returned={item.status === '已退回'}>{item.status}</span>
               </div>
-              <p>{item.evidence}</p>
-              <small>对应 {requirements.find((node) => node.id === item.requirementId)?.label.split('\n')[0]} · {item.submitter} 提交</small>
+              {#if editingEvidenceId === item.id}
+                <div class="evidence-edit">
+                  <textarea bind:value={evidenceDraft} rows="3"></textarea>
+                  <div class="review-actions">
+                    <button class="btn-primary" onclick={() => saveEvidence(item.id)} disabled={evidenceDraft.trim().length < 12}>保存证据（触发结论重算）</button>
+                    <button class="btn-secondary" onclick={() => editingEvidenceId = null}>取消</button>
+                  </div>
+                </div>
+              {:else}
+                <p>{item.evidence}</p>
+                <small>对应 {requirements.find((node) => node.id === item.requirementId)?.label.split('\n')[0]} · {item.submitter} 提交{#if item.decidedAt} · 结论于 {new Date(item.decidedAt).toLocaleString('zh-CN')}{/if}</small>
+              {/if}
               {#if item.status === '待审阅'}
                 <div class="review-actions">
                   <input bind:value={reviewComments[item.id]} placeholder="填写附议或退回意见" />
@@ -59,6 +99,21 @@
               {:else}
                 <div class:returned={item.status === '已退回'} class="decision">审阅意见：{item.comment}</div>
               {/if}
+              {#if editingEvidenceId !== item.id}
+                <div class="evidence-row">
+                  <button class="link-btn" onclick={() => startEditEvidence(item)}>修改证据</button>
+                </div>
+              {/if}
+              {#if item.conclusionHistory && item.conclusionHistory.length > 0}
+                <div class="history">
+                  {#each item.conclusionHistory as record}
+                    <div class="history-item">
+                      <span>旧结论：{record.status}（{record.decidedBy === 'owner' ? '负责人' : '审阅人'} · {new Date(record.decidedAt).toLocaleString('zh-CN')}）</span>
+                      <span class="invalidated-note">已失效：{record.reason}（{new Date(record.invalidatedAt).toLocaleString('zh-CN')}）</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           </article>
         {/each}
@@ -67,7 +122,7 @@
 
     <aside class="panel">
       <div class="panel-head"><h3>提交课程修订</h3><span class="muted">服务端校验</span></div>
-      <form method="POST" action="?/submitRevision" use:enhance>
+      <form method="POST" action="?/submitRevision" use:enhance={handleSubmit}>
         <label>课程<select name="courseId">{#each courseNames as course}<option value={course.id}>{course.id} · {course.label.split('\n')[0]}</option>{/each}</select></label>
         <label>毕业要求<select name="requirementId">{#each requirements as requirement}<option value={requirement.id}>{requirement.id} · {requirement.label.split('\n')[0]}</option>{/each}</select></label>
         <label>证据说明<textarea name="evidence" rows="4" placeholder="说明教学活动、考核记录与达成证据"></textarea></label>
@@ -89,6 +144,7 @@
   .actions { display: flex; gap: 8px; }
   .notice { margin-bottom: 12px; padding: 12px 14px; border-left: 3px solid #3f8869; color: #27634d; background: #ebf6f0; }
   .notice.error { border-color: #bd4d35; color: #913c2b; background: #fff1ec; }
+  .notice.invalidated { border-color: #cd813a; color: #7a5223; background: #fff6e9; }
   .review-layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 14px; align-items: start; }
   .review-list { padding: 8px 16px 16px; }
   .review-list article { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 9px; padding: 14px 0; border-bottom: 1px solid #e8eded; }
@@ -103,6 +159,14 @@
   .review-actions input { flex: 1; }
   .decision { margin-top: 9px; padding: 8px; color: #2f6f58; background: #edf7f1; font-size: 11px; }
   .decision.returned { color: #a54431; background: #fff0ec; }
+  .evidence-row { margin-top: 8px; }
+  .link-btn { padding: 0; border: 0; color: #2f6f72; background: transparent; font-size: 11px; cursor: pointer; text-decoration: underline; }
+  .evidence-edit { margin: 7px 0; }
+  .evidence-edit textarea { margin-bottom: 7px; }
+  .history { margin-top: 9px; padding: 8px 10px; border-left: 3px solid #cd813a; background: #faf6ee; }
+  .history-item { display: grid; gap: 2px; font-size: 10px; color: #6c6256; }
+  .history-item + .history-item { margin-top: 6px; }
+  .invalidated-note { color: #a54431; }
   form { display: grid; gap: 12px; padding: 16px; }
   form button { margin-top: 3px; }
   .version-compare { margin: 0 16px 16px; padding: 12px; border: 1px solid #dbe3e3; border-radius: 8px; background: #f6f8f7; }
