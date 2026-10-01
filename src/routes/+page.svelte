@@ -13,9 +13,9 @@
       return response.json()
     },
   }))
-  const issues = $derived(validateCurriculum($curriculumStore))
-  const reviewOpen = $derived($curriculumStore.reviewItems.filter((item) => item.status === '待审阅').length)
-  const covered = $derived($curriculumStore.nodes.filter((node) => node.type === '毕业要求' && $curriculumStore.mappings.some((mapping) => mapping.source === node.id)).length)
+  const issues = $derived(validateCurriculum($curriculumStore.view))
+  const reviewOpen = $derived($curriculumStore.view.reviewItems.filter((item) => item.status === '待审阅').length)
+  const covered = $derived($curriculumStore.view.nodes.filter((node) => node.type === '毕业要求' && $curriculumStore.view.mappings.some((mapping) => mapping.source === node.id)).length)
 </script>
 
 <svelte:head><title>课程标准映射总览</title></svelte:head>
@@ -27,24 +27,24 @@
   </div>
 
   <div class="metric-grid">
-    <article class="metric"><span>培养目标</span><strong>{$curriculumStore.nodes.filter((node) => node.type === '目标').length}</strong><small>2 条毕业要求主链</small></article>
-    <article class="metric"><span>毕业要求覆盖</span><strong>{covered}/{$curriculumStore.nodes.filter((node) => node.type === '毕业要求').length}</strong><small>{issues.filter((issue) => issue.severity === '错误').length} 个阻断缺口</small></article>
-    <article class="metric"><span>课程映射</span><strong>{$curriculumStore.mappings.length}</strong><small>含前置、教学与考核</small></article>
-    <article class="metric"><span>待审阅提交</span><strong style="color:#b45c34">{reviewOpen}</strong><small>院系审阅队列</small></article>
+    <article class="metric"><span>培养目标</span><strong>{$curriculumStore.view.nodes.filter((node) => node.type === '目标').length}</strong><small>2 条毕业要求主链</small></article>
+    <article class="metric"><span>毕业要求覆盖</span><strong>{covered}/{$curriculumStore.view.nodes.filter((node) => node.type === '毕业要求').length}</strong><small>{issues.filter((issue) => issue.severity === '错误').length} 个阻断缺口</small></article>
+    <article class="metric"><span>课程映射</span><strong>{$curriculumStore.view.mappings.length}</strong><small>含前置、教学与考核</small></article>
+    <article class="metric"><span>待审阅提交</span><strong style="color:#b45c34">{reviewOpen}</strong><small>院系审阅队列{$curriculumStore.pendingCount ? ` · ${$curriculumStore.pendingCount} 条待回传` : ''}</small></article>
   </div>
 
   <div class="overview-grid">
     <section class="panel">
       <div class="panel-head"><h3>培养目标达成链</h3>{#if query.data}<span class="muted">数据更新 {query.data.updatedAt.slice(11,16)}</span>{/if}</div>
       <div class="chain">
-        {#each $curriculumStore.nodes.filter((node) => node.type === '目标') as objective}
+        {#each $curriculumStore.view.nodes.filter((node) => node.type === '目标') as objective}
           <article>
             <div class="node-title">{objective.label.split('\n')[0]}</div>
             <p>{objective.label.split('\n')[1]}</p>
             <div class="arrow">↓</div>
             <div class="requirements">
-              {#each $curriculumStore.mappings.filter((mapping) => mapping.source === objective.id) as mapping}
-                {@const requirement = $curriculumStore.nodes.find((node) => node.id === mapping.target)}
+              {#each $curriculumStore.view.mappings.filter((mapping) => mapping.source === objective.id) as mapping}
+                {@const requirement = $curriculumStore.view.nodes.find((node) => node.id === mapping.target)}
                 <div>{requirement?.label.split('\n')[0]} <span>权重 {Math.round(mapping.weight * 100)}%</span></div>
               {/each}
             </div>
@@ -63,6 +63,13 @@
         {/each}
         {#if issues.length === 0}<div class="empty">未发现覆盖缺口或重复映射。</div>{/if}
       </div>
+      {#if $curriculumStore.activeBatch}
+        <div class="hint-box batch">
+          <strong>修订批次 {$curriculumStore.activeBatch.id}</strong>
+          <p>{$curriculumStore.activeBatch.title} · {$curriculumStore.online ? '已回网' : '断网补录中'}</p>
+          <p>{$curriculumStore.pendingCount} 条待回传 · {$curriculumStore.conflictCount} 条待确认 · {$curriculumStore.failedCount} 条失败待重试</p>
+        </div>
+      {/if}
       <div class="hint-box"><strong>当前草稿</strong><p>{$curriculumStore.draft}</p></div>
     </aside>
   </div>
@@ -89,6 +96,7 @@
   .issue-list article > span { position: absolute; top: 12px; right: 0; color: #809096; font-size: 10px; }
   .empty { padding: 22px 0; color: #3d7b63; font-size: 12px; }
   .hint-box { margin: 0 16px 16px; padding: 13px; border-left: 3px solid #cd813a; background: #fff6e9; }
+  .hint-box.batch { border-left-color: #2f6f72; background: #eef5f4; }
   .hint-box strong { font-size: 12px; }
   .hint-box p { margin: 6px 0 0; color: #6c6256; font-size: 11px; line-height: 1.5; }
   @media (max-width: 1000px) { .overview-grid { grid-template-columns: 1fr; } }

@@ -1,8 +1,9 @@
 import { fail } from '@sveltejs/kit'
 import { revisionSchema } from '$lib/schema'
-import { reviewItems } from '$lib/seed'
 
 export const actions = {
+  // 无 JS 兜底：仅做服务端 Zod 校验。
+  // 正常路径下修订由前端 enhance 拦截并进入修订批次（可断网补录、回网按条目合并）。
   submitRevision: async ({ request }) => {
     const form = await request.formData()
     const parsed = revisionSchema.safeParse({
@@ -15,16 +16,6 @@ export const actions = {
     if (!parsed.success) {
       return fail(400, { errors: parsed.error.flatten().fieldErrors, values: Object.fromEntries(form) })
     }
-    const item = {
-      id: `REV-${Date.now().toString().slice(-4)}`,
-      courseId: parsed.data.courseId,
-      requirementId: parsed.data.requirementId,
-      evidence: `${parsed.data.evidence} 修订说明：${parsed.data.revisionNote}`,
-      submitter: parsed.data.submitter,
-      status: '待审阅' as const,
-      comment: '',
-    }
-    reviewItems.unshift(item)
-    return { success: true, item }
+    return { success: true, item: { id: `REV-${Date.now().toString().slice(-4)}` } }
   },
 }

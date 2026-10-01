@@ -3,7 +3,8 @@
   let selectedCourse = $state('C-308')
   let query = $state('')
   const types = ['课程', '单元', '教学活动', '考核'] as const
-  const visible = $derived($curriculumStore.nodes.filter((node) => types.includes(node.type as typeof types[number]) && `${node.label}${node.id}`.includes(query)))
+  const view = $derived($curriculumStore.view)
+  const visible = $derived(view.nodes.filter((node) => types.includes(node.type as typeof types[number]) && `${node.label}${node.id}`.includes(query)))
   const selected = $derived(visible.find((node) => node.id === selectedCourse) ?? visible[0])
 </script>
 
@@ -41,9 +42,9 @@
           </div>
           <h3>直接映射</h3>
           <div class="mapping-list">
-            {#each $curriculumStore.mappings.filter((mapping) => mapping.source === selected.id || mapping.target === selected.id) as mapping}
-              {@const source = $curriculumStore.nodes.find((node) => node.id === mapping.source)}
-              {@const target = $curriculumStore.nodes.find((node) => node.id === mapping.target)}
+            {#each view.mappings.filter((mapping) => mapping.source === selected.id || mapping.target === selected.id) as mapping}
+              {@const source = view.nodes.find((node) => node.id === mapping.source)}
+              {@const target = view.nodes.find((node) => node.id === mapping.target)}
               <div><span>{source?.label.split('\n')[0]} → {target?.label.split('\n')[0]}</span><b>{mapping.relation}</b><small>权重 {Math.round(mapping.weight * 100)}%</small></div>
             {/each}
           </div>

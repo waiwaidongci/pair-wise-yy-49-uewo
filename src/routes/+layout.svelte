@@ -13,7 +13,9 @@
     { href: '/courses', label: '课程与单元', icon: '课' },
     { href: '/matrix', label: '映射图谱', icon: '图' },
     { href: '/review', label: '改革审阅', icon: '审' },
+    { href: '/batches', label: '修订批次', icon: '批' },
   ]
+  const batch = $derived($curriculumStore.activeBatch)
 </script>
 
 <svelte:head><title>{page.data?.title ?? '课程改革审阅平台'}</title></svelte:head>
@@ -27,7 +29,17 @@
           <a href={item.href} class:active={page.url.pathname === item.href} onclick={() => mobileOpen = false}><span>{item.icon}</span>{item.label}</a>
         {/each}
       </nav>
-      <div class="side-note"><strong>{$curriculumStore.locked ? '版本已锁定' : '草稿自动保存'}</strong><span>当前版本 {$curriculumStore.revision}</span></div>
+      <div class="side-note">
+        {#if batch}
+          <strong class={batch.online ? '' : 'offline'}>{batch.online ? '● 在线修订批次' : '○ 断网补录中'}</strong>
+          <span>{batch.id} · {batch.title}</span>
+          <span>排队 {$curriculumStore.pendingCount} / 待确认 {$curriculumStore.conflictCount} / 失败 {$curriculumStore.failedCount}</span>
+          <span class={batch.status === 'merged' ? 'merged' : ''}>批次状态：{batch.status}</span>
+        {:else}
+          <strong>{$curriculumStore.locked ? '版本已锁定' : '草稿自动保存'}</strong>
+          <span>当前版本 {$curriculumStore.revision}</span>
+        {/if}
+      </div>
     </aside>
     <main>
       <header class="mobile-header"><button onclick={() => mobileOpen = !mobileOpen}>菜单</button><strong>{page.data?.title ?? '课程标准映射'}</strong></header>
@@ -50,7 +62,9 @@
   nav a span { display: grid; width: 24px; height: 24px; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 5px; font-size: 11px; }
   .side-note { margin: auto 12px 14px; padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: rgba(255,255,255,.04); }
   .side-note strong, .side-note span { display: block; font-size: 11px; }
+  .side-note strong.offline { color: #e8b67c; }
   .side-note span { margin-top: 5px; color: #9eb2b5; }
+  .side-note span.merged { color: #8fd3b7; }
   main { min-width: 0; margin-left: 242px; }
   .mobile-header { display: none; }
   @media (max-width: 800px) {

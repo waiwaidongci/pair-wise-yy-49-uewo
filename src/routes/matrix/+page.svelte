@@ -10,12 +10,13 @@
   let relation = $state<Mapping['relation']>('支撑')
   let weight = $state(1)
   let query = $state('')
-  const issues = $derived(validateCurriculum($curriculumStore))
-  const visibleIds = $derived(new Set($curriculumStore.nodes.filter((node) => !query || node.label.includes(query) || node.id.includes(query)).map((node) => node.id)))
-  const selected = $derived($curriculumStore.nodes.find((item) => item.id === selectedNode))
+  const view = $derived($curriculumStore.view)
+  const issues = $derived(validateCurriculum(view))
+  const visibleIds = $derived(new Set(view.nodes.filter((node) => !query || node.label.includes(query) || node.id.includes(query)).map((node) => node.id)))
+  const selected = $derived(view.nodes.find((item) => item.id === selectedNode))
 
   function startDrag(event: MouseEvent, id: string) {
-    const node = $curriculumStore.nodes.find((item) => item.id === id)
+    const node = view.nodes.find((item) => item.id === id)
     if (!node) return
     const svg = (event.currentTarget as SVGElement).ownerSVGElement
     const rect = svg?.getBoundingClientRect()
@@ -37,13 +38,20 @@
   }
 
   function exportMap() {
-    const blob = new Blob([JSON.stringify($curriculumStore, null, 2)], { type: 'application/json' })
+    const { filename, content } = curriculumStore.exportMap()
+    const blob = new Blob([content], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `课程地图-${$curriculumStore.revision}.json`
+    link.download = filename
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  function nextRevision() {
+    const current = $curriculumStore.revision
+    const num = Number(current.slice(1))
+    curriculumStore.lock(`R${Number.isFinite(num) ? num + 1 : Date.now()}`)
   }
 </script>
 
@@ -51,15 +59,24 @@
 
 <section class="page">
   <div class="page-head">
-    <div><p class="eyebrow">CURRICULUM MAP / 映射图谱</p><h1>有向关系与覆盖矩阵</h1><p class="muted">拖动节点重新布局；连边关系持久保存，覆盖缺口会立即高亮。</p></div>
-    <div class="actions"><button class="btn-secondary" onclick={exportMap}>导出课程地图</button><button class="btn-primary" onclick={() => $curriculumStore.lock(`R${Number($curriculumStore.revision.slice(1)) + 1}`)}>锁定当前版本</button></div>
+    <div><p class="eyebrow">CURRICULUM MAP / 映射图谱</p><h1>有向关系与覆盖矩阵</h1><p class="muted">拖动节点、连边都会进入当前修订批次：断网照常补录，回网按条目合并，不覆盖对方修改。</p></div>
+    <div class="actions"><button class="btn-secondary" onclick={exportMap}>导出课程地图（随批次登记）</button><button class="btn-primary" onclick={nextRevision}>锁定当前版本</button></div>
   </div>
+
+  {#if $curriculumStore.activeBatch}
+    <div class="batch-strip" class:offline={!$curriculumStore.online}>
+      <span>批次 {$curriculumStore.activeBatch.id} · 冻结于 {$curriculumStore.activeBatch.snapshot.frozenAt.slice(0, 16).replace('T', ' ')}</span>
+      <span>{$curriculumStore.online ? '在线：编辑会先排队再回传' : '断网：补录保存在本地队列'}</span>
+      <span>{$curriculumStore.pendingCount} 待回传 / {$curriculumStore.conflictCount} 待确认 / {$curriculumStore.failedCount} 失败</span>
+      <a href="/batches">前往批次处理</a>
+    </div>
+  {/if}
 
   <div class="matrix-toolbar panel">
     <input bind:value={query} placeholder="搜索目标、课程或单元" />
-    <select bind:value={source}>{#each $curriculumStore.nodes as node}<option value={node.id}>{node.id} · {node.label.split('\n')[0]}</option>{/each}</select>
+    <select bind:value={source}>{#each view.nodes as node}<option value={node.id}>{node.id} · {node.label.split('\n')[0]}</option>{/each}</select>
     <span>→</span>
-    <select bind:value={target}>{#each $curriculumStore.nodes as node}<option value={node.id}>{node.id} · {node.label.split('\n')[0]}</option>{/each}</select>
+    <select bind:value={target}>{#each view.nodes as node}<option value={node.id}>{node.id} · {node.label.split('\n')[0]}</option>{/each}</select>
     <select bind:value={relation}><option>支撑</option><option>前置</option><option>教学</option><option>考核</option></select>
     <input bind:value={weight} type="number" min="0" max="1" step="0.1" />
     <button class="btn-primary" onclick={addMapping}>新增连边</button>
@@ -72,15 +89,15 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <svg role="application" aria-label="课程映射拖拽图" viewBox="0 0 1200 520" onmousemove={drag} onmouseup={() => (dragging = null)} onmouseleave={() => (dragging = null)}>
         <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#688086" /></marker></defs>
-        {#each $curriculumStore.mappings as mapping}
-          {@const from = $curriculumStore.nodes.find((node) => node.id === mapping.source)}
-          {@const to = $curriculumStore.nodes.find((node) => node.id === mapping.target)}
+        {#each view.mappings as mapping}
+          {@const from = view.nodes.find((node) => node.id === mapping.source)}
+          {@const to = view.nodes.find((node) => node.id === mapping.target)}
           {#if from && to && visibleIds.has(from.id) && visibleIds.has(to.id)}
             <line x1={from.x + 80} y1={from.y + 28} x2={to.x} y2={to.y + 28} class:relation={true} marker-end="url(#arrow)" />
             <text x={(from.x + to.x) / 2 + 80} y={(from.y + to.y) / 2 + 22} class="edge-label">{mapping.relation}</text>
           {/if}
         {/each}
-        {#each $curriculumStore.nodes as node}
+        {#each view.nodes as node}
           {#if visibleIds.has(node.id)}
             <g
               class:selected={selectedNode === node.id}
@@ -103,11 +120,11 @@
     <aside class="panel">
       <div class="panel-head"><h3>覆盖矩阵</h3><span class="muted">Σ 权重</span></div>
       <div class="coverage-matrix">
-        {#each $curriculumStore.nodes.filter((node) => node.type === '毕业要求') as requirement}
+        {#each view.nodes.filter((node) => node.type === '毕业要求') as requirement}
           <div class="matrix-row">
             <strong>{requirement.label.split('\n')[0]}</strong>
-            {#each $curriculumStore.nodes.filter((node) => node.type === '课程') as course}
-              {@const links = $curriculumStore.mappings.filter((mapping) => mapping.source === requirement.id && mapping.target === course.id)}
+            {#each view.nodes.filter((node) => node.type === '课程') as course}
+              {@const links = view.mappings.filter((mapping) => mapping.source === requirement.id && mapping.target === course.id)}
               <span class:covered={links.length}>{links.length ? Math.round(links.reduce((sum, link) => sum + link.weight, 0) * 100) : '—'}</span>
             {/each}
           </div>
@@ -116,7 +133,19 @@
       <div class="legend"><span><i class="covered-dot"></i>已有映射</span><span><i class="gap-dot"></i>覆盖缺口</span></div>
       <div class="node-detail">
         {#if selected}
-          <strong>{selected.label.split('\n')[0]}</strong><p>{selected.id} · {selected.type}</p><button class="btn-secondary">编辑节点信息</button>
+          <strong>{selected.label.split('\n')[0]}</strong><p>{selected.id} · {selected.type}</p>
+          <h4>相关连边{#if !$curriculumStore.online}（断网补录排队中）{/if}</h4>
+          <div class="edge-actions">
+            {#each view.mappings.filter((mapping) => mapping.source === selected.id || mapping.target === selected.id) as mapping}
+              <div>
+                <span>{mapping.id} · {mapping.relation} · {Math.round(mapping.weight * 100)}%</span>
+                <button class="btn-danger" onclick={() => curriculumStore.deleteMapping(mapping.id)}>删除</button>
+              </div>
+            {/each}
+            {#if view.mappings.filter((mapping) => mapping.source === selected.id || mapping.target === selected.id).length === 0}
+              <small class="muted">该节点暂无连边</small>
+            {/if}
+          </div>
         {/if}
       </div>
     </aside>
@@ -125,6 +154,9 @@
 
 <style>
   .actions { display: flex; gap: 8px; }
+  .batch-strip { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #b8d3d1; border-radius: 8px; color: #27565a; background: #e9f3f2; font-size: 12px; }
+  .batch-strip.offline { border-color: #e0b98d; color: #8a5a23; background: #fff5e8; }
+  .batch-strip a { margin-left: auto; color: #2f6f72; font-weight: 700; }
   .matrix-toolbar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; padding: 12px; }
   .matrix-toolbar > input:first-child { max-width: 220px; }
   .matrix-toolbar select { max-width: 230px; }
@@ -155,5 +187,9 @@
   .node-detail { margin: 0 14px 14px; padding: 13px; border-left: 3px solid #377c7b; background: #f3f7f6; }
   .node-detail strong { display: block; }
   .node-detail p { margin: 5px 0 10px; color: #748188; font-size: 11px; }
+  .node-detail h4 { margin: 4px 0 8px; font-size: 12px; }
+  .edge-actions { display: grid; gap: 6px; }
+  .edge-actions > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 1px solid #dde5e5; border-radius: 6px; font-size: 11px; color: #4c6167; }
+  .edge-actions button { padding: 4px 9px; font-size: 11px; }
   @media (max-width: 1050px) { .matrix-layout { grid-template-columns: 1fr; } }
 </style>
